@@ -1,2 +1,0 @@
-Vendor/liblitert_lm.a filter=lfs diff=lfs merge=lfs -text
-Vendor/libGemmaModelConstraintProvider.dylib filter=lfs diff=lfs merge=lfs -text
