@@ -18,11 +18,11 @@ let package = Package(
             checksum: "eb556928a38237577e32a698fe488c22719a1ecfddac00ca605dd17ee7ee1571"
         ),
 
-        // Vorkompilierte dylib (libGemmaModelConstraintProvider)
+        // Vorkompilierte dylib (libGemmaModelConstraintProvider) — enthält dSYMs
         .binaryTarget(
             name: "LiteRTLMGemma",
-            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v1.0.1/LiteRTLMGemma.xcframework.zip",
-            checksum: "ee9b34fdf7200d3f3fd47494a7b79f9ed0d2cbc76609d0517d7923a9b2de5248"
+            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v1.0.3/LiteRTLMGemma.xcframework.zip",
+            checksum: "3aac33f546aedeb86e03a5eb0ba8dd2c82a1c938d8825a8b929d2eb217278fd4"
         ),
 
         // C++ Bridge — kompiliert LiteRTBridge.cpp
