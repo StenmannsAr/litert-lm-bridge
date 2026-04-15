@@ -21,7 +21,7 @@ let package = Package(
         // Vorkompilierte dylib (libGemmaModelConstraintProvider) — enthält dSYMs
         .binaryTarget(
             name: "LiteRTLMGemma",
-            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v1.0.3/LiteRTLMGemma.xcframework.zip",
+            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v1.0.4/LiteRTLMGemma.xcframework.zip",
             checksum: "3aac33f546aedeb86e03a5eb0ba8dd2c82a1c938d8825a8b929d2eb217278fd4"
         ),
 
