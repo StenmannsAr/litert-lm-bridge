@@ -14,6 +14,14 @@
 // LiteRT-LM C-API (via HEADER_SEARCH_PATHS auf das Repo-Verzeichnis gesetzt)
 #include "c/engine.h"
 
+// Erzwingt dass der Linker engine_impl.o aus liblitert_lm.a einschließt.
+// engine_impl.o enthält LITERT_LM_REGISTER_ENGINE(kLiteRTCompiledModel, ...)
+// als statischen Initializer. Ohne Referenz auf ein öffentliches Symbol aus
+// diesem Object-File würde der Linker es dead-strippen → EngineFactory leer
+// → "Engine type not found: 1" beim ersten LLM-Aufruf.
+extern "C" void litert_lm_force_register_engine_impl();
+static const auto _force_engine_impl = (litert_lm_force_register_engine_impl(), 0);
+
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>

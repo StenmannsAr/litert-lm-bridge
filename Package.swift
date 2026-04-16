@@ -11,11 +11,12 @@ let package = Package(
         ),
     ],
     targets: [
-        // Vorkompilierte statische Libs (liblitert_lm.a + libengine_init.a)
+        // Vorkompilierte statische Libs — engine_impl.o mit Registration-Hook
+        // (litert_lm_force_register_engine_impl verhindert Dead-Stripping)
         .binaryTarget(
             name: "LiteRTLMVendor",
-            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v1.0.1/LiteRTLMVendor.xcframework.zip",
-            checksum: "eb556928a38237577e32a698fe488c22719a1ecfddac00ca605dd17ee7ee1571"
+            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v1.0.2/LiteRTLMVendor.xcframework.zip",
+            checksum: "200ce1b46ca3bda9c366fa98157c7d1be5e3f8f77ccd0a73a81655b9d537006a"
         ),
 
         // Statische Lib (libGemmaModelConstraintProvider) — stub, kein dylib → keine ITMS-Fehler
