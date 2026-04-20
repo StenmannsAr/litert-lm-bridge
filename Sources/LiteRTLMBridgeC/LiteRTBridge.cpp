@@ -21,16 +21,20 @@ static const auto _force_engine_impl = (litert_lm_force_register_engine_impl(), 
 #include <string>
 
 // ---------------------------------------------------------------------------
-// Internes Handle — kapselt LiteRT-LM Engine + persistente Session
+// Internes Handle — kapselt LiteRT-LM Engine
 // ---------------------------------------------------------------------------
+//
+// Die Session wird bewusst NICHT persistent gehalten:
+// `SessionBasic` ruft `executor_.Reset()` erst im Destruktor auf
+// (siehe LiteRT-LM/runtime/core/session_basic.cc:132). `GenerateContent`
+// hängt an den bestehenden KV-Cache an, statt ihn zu leeren. Für unsere
+// unabhängigen Dokument-Scans (und Retry-Versuche innerhalb eines Scans)
+// bedeutet eine wiederverwendete Session: der Kontext läuft nach wenigen
+// Aufrufen voll und die Ausgabe wird auf wenige Tokens abgeschnitten.
 
 struct LiteRTEngineHandle {
     LiteRtLmEngine*         lm_engine   = nullptr;
     LiteRtLmEngineSettings* lm_settings = nullptr;
-
-    // Persistente Session — einmal anlegen, pro Inferenz neu befüllen.
-    // Erspart ~100–200 ms Session-Init-Overhead je Scan.
-    LiteRtLmSession*        lm_session  = nullptr;
 
     // Serialisiert Inferenz-Aufrufe aus Swift
     std::mutex inference_mutex;
@@ -137,28 +141,13 @@ LiteRTEngineRef litert_engine_create(const char* model_path, const char* cache_d
             return nullptr;
         }
 
-        // 3. Persistente Session anlegen (wird bei jeder Inferenz wiederverwendet)
-        LiteRtLmSessionConfig* session_config = create_session_config();
-        handle->lm_session = litert_lm_engine_create_session(
-            handle->lm_engine, session_config);
-        if (session_config) litert_lm_session_config_delete(session_config);
-
-        if (!handle->lm_session) {
-            fprintf(stderr, "[LiteRTBridge] Session-Init fehlgeschlagen\n");
-            litert_lm_engine_delete(handle->lm_engine);
-            litert_lm_engine_settings_delete(handle->lm_settings);
-            delete handle;
-            return nullptr;
-        }
-
         handle->is_initialized = true;
-        fprintf(stderr, "[LiteRTBridge] Engine + Session bereit: %s\n", model_path);
+        fprintf(stderr, "[LiteRTBridge] Engine bereit: %s\n", model_path);
         return static_cast<LiteRTEngineRef>(handle);
 
     } catch (const std::exception& e) {
         fprintf(stderr, "[LiteRTBridge] litert_engine_create Exception: %s\n", e.what());
         if (handle) {
-            if (handle->lm_session)  litert_lm_session_delete(handle->lm_session);
             if (handle->lm_engine)   litert_lm_engine_delete(handle->lm_engine);
             if (handle->lm_settings) litert_lm_engine_settings_delete(handle->lm_settings);
             delete handle;
@@ -167,7 +156,6 @@ LiteRTEngineRef litert_engine_create(const char* model_path, const char* cache_d
     } catch (...) {
         fprintf(stderr, "[LiteRTBridge] litert_engine_create: unbekannte Exception\n");
         if (handle) {
-            if (handle->lm_session)  litert_lm_session_delete(handle->lm_session);
             if (handle->lm_engine)   litert_lm_engine_delete(handle->lm_engine);
             if (handle->lm_settings) litert_lm_engine_settings_delete(handle->lm_settings);
             delete handle;
@@ -179,7 +167,6 @@ LiteRTEngineRef litert_engine_create(const char* model_path, const char* cache_d
 void litert_engine_destroy(LiteRTEngineRef engine) {
     if (!engine) return;
     LiteRTEngineHandle* handle = static_cast<LiteRTEngineHandle*>(engine);
-    if (handle->lm_session)  litert_lm_session_delete(handle->lm_session);
     if (handle->lm_engine)   litert_lm_engine_delete(handle->lm_engine);
     if (handle->lm_settings) litert_lm_engine_settings_delete(handle->lm_settings);
     delete handle;
@@ -194,25 +181,38 @@ const char* litert_engine_send_message(LiteRTEngineRef engine, const char* messa
     LiteRTEngineHandle* handle = static_cast<LiteRTEngineHandle*>(engine);
     std::lock_guard<std::mutex> lock(handle->inference_mutex);
 
-    if (!handle->is_initialized || !handle->lm_engine || !handle->lm_session) {
+    if (!handle->is_initialized || !handle->lm_engine) {
         fprintf(stderr, "[LiteRTBridge] litert_engine_send_message: Engine nicht initialisiert\n");
         return nullptr;
     }
 
-    LiteRtLmResponses* responses = nullptr;
+    LiteRtLmSessionConfig* session_config = nullptr;
+    LiteRtLmSession*       session        = nullptr;
+    LiteRtLmResponses*     responses      = nullptr;
 
     try {
-        // Persistente Session direkt nutzen — kein Create/Delete-Overhead.
-        // Die Session ist stateless zwischen unabhängigen Dokument-Scans:
-        // jeder Aufruf startet bei leerem KV-Cache (kein Kontext-Übertrag).
+        // Frische Session pro Aufruf — SessionBasic ruft executor_.Reset()
+        // nur im Destruktor auf, eine wiederverwendete Session würde also
+        // den KV-Cache zwischen Aufrufen behalten und nach wenigen Scans
+        // den 4096-Token-Kontext sprengen (→ abgeschnittene Ausgabe).
+        session_config = create_session_config();
+        session = litert_lm_engine_create_session(handle->lm_engine, session_config);
+        if (!session) {
+            fprintf(stderr, "[LiteRTBridge] Session-Init fehlgeschlagen\n");
+            if (session_config) litert_lm_session_config_delete(session_config);
+            return nullptr;
+        }
+
         InputData input;
         input.type = kInputText;
         input.data = static_cast<const void*>(message);
         input.size = strlen(message);
 
-        responses = litert_lm_session_generate_content(handle->lm_session, &input, 1);
+        responses = litert_lm_session_generate_content(session, &input, 1);
         if (!responses) {
             fprintf(stderr, "[LiteRTBridge] litert_lm_session_generate_content fehlgeschlagen\n");
+            litert_lm_session_delete(session);
+            if (session_config) litert_lm_session_config_delete(session_config);
             return nullptr;
         }
 
@@ -220,12 +220,16 @@ const char* litert_engine_send_message(LiteRTEngineRef engine, const char* messa
         if (num_candidates == 0) {
             fprintf(stderr, "[LiteRTBridge] Keine Antwort-Kandidaten\n");
             litert_lm_responses_delete(responses);
+            litert_lm_session_delete(session);
+            if (session_config) litert_lm_session_config_delete(session_config);
             return nullptr;
         }
 
         const char* text = litert_lm_responses_get_response_text_at(responses, 0);
         if (!text) {
             litert_lm_responses_delete(responses);
+            litert_lm_session_delete(session);
+            if (session_config) litert_lm_session_config_delete(session_config);
             return nullptr;
         }
 
@@ -233,18 +237,27 @@ const char* litert_engine_send_message(LiteRTEngineRef engine, const char* messa
         char*        result = static_cast<char*>(malloc(len + 1));
         if (!result) {
             litert_lm_responses_delete(responses);
+            litert_lm_session_delete(session);
+            if (session_config) litert_lm_session_config_delete(session_config);
             return nullptr;
         }
         memcpy(result, text, len + 1);
+
         litert_lm_responses_delete(responses);
+        litert_lm_session_delete(session);
+        if (session_config) litert_lm_session_config_delete(session_config);
         return result;
 
     } catch (const std::exception& e) {
         fprintf(stderr, "[LiteRTBridge] send_message Exception: %s\n", e.what());
-        if (responses) litert_lm_responses_delete(responses);
+        if (responses)      litert_lm_responses_delete(responses);
+        if (session)        litert_lm_session_delete(session);
+        if (session_config) litert_lm_session_config_delete(session_config);
         return nullptr;
     } catch (...) {
-        if (responses) litert_lm_responses_delete(responses);
+        if (responses)      litert_lm_responses_delete(responses);
+        if (session)        litert_lm_session_delete(session);
+        if (session_config) litert_lm_session_config_delete(session_config);
         return nullptr;
     }
 }
