@@ -15,15 +15,15 @@ let package = Package(
         // Registration-Hook (litert_lm_force_register_engine_impl)
         .binaryTarget(
             name: "LiteRTLMVendor",
-            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v2.0.0/LiteRTLMVendor.xcframework.zip",
-            checksum: "f4b24d84553425f5a8bcd40b90372e75b88abea1cf7c21c25e1570efc73e8fa4"
+            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v2.0.1/LiteRTLMVendor.xcframework.zip",
+            checksum: "1d00bff5d9b5d51c9d74483102a08c39d7b49c8093bcaf59c4299bad6fc3934b"
         ),
 
         // Statische Lib (libGemmaModelConstraintProvider) — stub, kein dylib → keine ITMS-Fehler
         .binaryTarget(
             name: "LiteRTLMGemma",
-            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v2.0.0/LiteRTLMGemma.xcframework.zip",
-            checksum: "506eb412c21dd8d405a51a43cf2483b38f6d27795ebd9d3efd5dc024388c7ecc"
+            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v2.0.1/LiteRTLMGemma.xcframework.zip",
+            checksum: "9bff056da8a9c10acf25f2da93ce2a0275f4d887678b3125c3dcaba6e5ff932f"
         ),
 
         // C++ Bridge — kompiliert LiteRTBridge.cpp
