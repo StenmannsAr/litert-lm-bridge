@@ -13,10 +13,11 @@ let package = Package(
     targets: [
         // Vorkompilierte statische Libs — engine_impl.o mit GPU-Support +
         // Registration-Hook (litert_lm_force_register_engine_impl)
+        // v2.1.2: LiteRTBridge.h aus XCFramework-Headers entfernt (Konflikt mit Source-Target)
         .binaryTarget(
             name: "LiteRTLMVendor",
-            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v2.0.1/LiteRTLMVendor.xcframework.zip",
-            checksum: "1d00bff5d9b5d51c9d74483102a08c39d7b49c8093bcaf59c4299bad6fc3934b"
+            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v2.1.2/LiteRTLMVendor.xcframework.zip",
+            checksum: "5eab6b1e70386ed22de4d62a534eabb8f911f68279fdfde5a1e95e0561d5146c"
         ),
 
         // Statische Lib (libGemmaModelConstraintProvider) — stub, kein dylib → keine ITMS-Fehler
