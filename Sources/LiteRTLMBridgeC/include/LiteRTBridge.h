@@ -1,6 +1,8 @@
 #ifndef LITERT_BRIDGE_H
 #define LITERT_BRIDGE_H
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
