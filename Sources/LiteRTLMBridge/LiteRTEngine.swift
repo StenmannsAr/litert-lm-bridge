@@ -30,7 +30,8 @@ public final class LiteRTEngine: @unchecked Sendable {
 
     #if targetEnvironment(simulator)
 
-    public init(modelPath: String, cacheDir: String? = nil) throws {
+    public init(modelPath: String, cacheDir: String? = nil,
+                enableSpeculativeDecoding: Bool = false) throws {
         // Kein echtes Modell im Simulator
     }
 
@@ -53,8 +54,9 @@ public final class LiteRTEngine: @unchecked Sendable {
 
     private nonisolated(unsafe) let engineRef: LiteRTEngineRef
 
-    public init(modelPath: String, cacheDir: String? = nil) throws {
-        guard let ref = litert_engine_create(modelPath, cacheDir) else {
+    public init(modelPath: String, cacheDir: String? = nil,
+                enableSpeculativeDecoding: Bool = false) throws {
+        guard let ref = litert_engine_create(modelPath, cacheDir, enableSpeculativeDecoding) else {
             throw LiteRTError.engineInitFailed(modelPath: modelPath)
         }
         self.engineRef = ref

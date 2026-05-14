@@ -52,41 +52,60 @@ struct LiteRTEngineHandle {
 // ---------------------------------------------------------------------------
 
 static LiteRtLmEngineSettings* create_settings_with_best_backend(
-    const char* model_path, const char* cache_dir)
+    const char* model_path, const char* cache_dir, bool enable_speculative_decoding)
 {
     // Reihenfolge: GPU (Metal) → CPU
     // GPU ist auf A-Series-Chips 3–10× schneller als CPU.
     const char* backends[] = { "gpu", "cpu" };
 
-    for (const char* backend : backends) {
-        LiteRtLmEngineSettings* settings = litert_lm_engine_settings_create(
-            model_path,
-            backend,
-            nullptr,  // Vision-Backend
-            nullptr   // Audio-Backend
-        );
-        if (!settings) continue;
+    // Zwei Pässe wenn Speculative Decoding angefordert:
+    //   Pass 0: mit SD (GPU → CPU)
+    //   Pass 1: ohne SD (GPU → CPU) — Fallback falls Modell keinen Drafter hat
+    // Ohne SD: nur ein Pass.
+    const int num_passes = enable_speculative_decoding ? 2 : 1;
 
-        // Kontext-Fenster: System-Prompt (~500) + OCR-Text (3000) + Antwort (300)
-        // 4096 ist ausreichend und hält den KV-Cache kleiner als 8192.
-        litert_lm_engine_settings_set_max_num_tokens(settings, 4096);
-
-        if (cache_dir && *cache_dir != '\0') {
-            litert_lm_engine_settings_set_cache_dir(settings, cache_dir);
+    for (int pass = 0; pass < num_passes; pass++) {
+        const bool use_sd = enable_speculative_decoding && (pass == 0);
+        if (pass == 1) {
+            fprintf(stderr, "[LiteRTBridge] SD-Fallback: Speculative Decoding deaktiviert "
+                            "(kein Drafter im Modell?)\n");
         }
 
-        // Testweise Engine anlegen um Backend-Verfügbarkeit zu prüfen
-        LiteRtLmEngine* test_engine = litert_lm_engine_create(settings);
-        if (test_engine) {
-            // GPU funktioniert — Engine behalten
-            fprintf(stderr, "[LiteRTBridge] Backend: %s ✓\n", backend);
-            litert_lm_engine_delete(test_engine);
-            return settings;
-        }
+        for (const char* backend : backends) {
+            LiteRtLmEngineSettings* settings = litert_lm_engine_settings_create(
+                model_path,
+                backend,
+                nullptr,  // Vision-Backend
+                nullptr   // Audio-Backend
+            );
+            if (!settings) continue;
 
-        // Dieses Backend fehlgeschlagen → nächstes versuchen
-        fprintf(stderr, "[LiteRTBridge] Backend %s fehlgeschlagen, versuche nächstes …\n", backend);
-        litert_lm_engine_settings_delete(settings);
+            // Kontext-Fenster: System-Prompt (~500) + OCR-Text (3000) + Antwort (300)
+            // 4096 ist ausreichend und hält den KV-Cache kleiner als 8192.
+            litert_lm_engine_settings_set_max_num_tokens(settings, 4096);
+
+            if (cache_dir && *cache_dir != '\0') {
+                litert_lm_engine_settings_set_cache_dir(settings, cache_dir);
+            }
+
+            if (use_sd) {
+                litert_lm_engine_settings_enable_speculative_decoding(settings);
+            }
+
+            // Testweise Engine anlegen um Backend-Verfügbarkeit zu prüfen
+            LiteRtLmEngine* test_engine = litert_lm_engine_create(settings);
+            if (test_engine) {
+                fprintf(stderr, "[LiteRTBridge] Backend: %s%s ✓\n",
+                        backend, use_sd ? " + MTP-Drafter" : "");
+                litert_lm_engine_delete(test_engine);
+                return settings;
+            }
+
+            // Dieses Backend fehlgeschlagen → nächstes versuchen
+            fprintf(stderr, "[LiteRTBridge] Backend %s%s fehlgeschlagen, versuche nächstes …\n",
+                    backend, use_sd ? " + SD" : "");
+            litert_lm_engine_settings_delete(settings);
+        }
     }
 
     return nullptr;
@@ -111,20 +130,25 @@ static LiteRtLmSessionConfig* create_session_config() {
 
 extern "C" {
 
-LiteRTEngineRef litert_engine_create(const char* model_path, const char* cache_dir) {
+LiteRTEngineRef litert_engine_create(const char* model_path, const char* cache_dir,
+                                     bool enable_speculative_decoding) {
     if (!model_path) {
         fprintf(stderr, "[LiteRTBridge] litert_engine_create: model_path ist NULL\n");
         return nullptr;
     }
 
-    fprintf(stderr, "[LiteRTBridge] Cache-Dir: %s\n", cache_dir ? cache_dir : "(keiner)");
+    fprintf(stderr, "[LiteRTBridge] Cache-Dir: %s | SD: %s\n",
+            cache_dir ? cache_dir : "(keiner)",
+            enable_speculative_decoding ? "an" : "aus");
 
     LiteRTEngineHandle* handle = nullptr;
     try {
         handle = new LiteRTEngineHandle();
 
         // 1. Settings mit bestem verfügbaren Backend (GPU → CPU Fallback)
-        handle->lm_settings = create_settings_with_best_backend(model_path, cache_dir);
+        //    Bei SD-Anforderung zusätzlich Fallback ohne Drafter.
+        handle->lm_settings = create_settings_with_best_backend(
+            model_path, cache_dir, enable_speculative_decoding);
         if (!handle->lm_settings) {
             fprintf(stderr, "[LiteRTBridge] Alle Backends fehlgeschlagen\n");
             delete handle;

@@ -12,9 +12,13 @@ typedef void* LiteRTEngineRef;
 /// Erstellt eine neue Engine-Instanz und lädt das Modell von `model_path`.
 /// `cache_dir` ist ein optionaler Pfad zu einem schreibbaren Verzeichnis für
 /// XNNPack-Caches (z. B. Library/Caches der App). NULL = kein externer Cache.
+/// `enable_speculative_decoding` aktiviert den MTP-Drafter (im Modell eingebettet).
+/// Falls das Modell keinen Drafter-Abschnitt enthält, fällt die Engine transparent
+/// auf Auto-Regressive-Decoding zurück.
 /// Gibt NULL zurück wenn das Modell nicht geladen werden konnte.
 /// Der Aufrufer ist verantwortlich, die Instanz mit litert_engine_destroy freizugeben.
-LiteRTEngineRef litert_engine_create(const char* model_path, const char* cache_dir);
+LiteRTEngineRef litert_engine_create(const char* model_path, const char* cache_dir,
+                                     bool enable_speculative_decoding);
 
 /// Gibt alle Ressourcen der Engine-Instanz frei.
 /// Sicher auf NULL zu rufen.

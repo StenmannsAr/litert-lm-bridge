@@ -31,7 +31,7 @@ let package = Package(
             name: "LiteRTLMBridgeC",
             dependencies: ["LiteRTLMVendor", "LiteRTLMGemma"],
             path: "Sources/LiteRTLMBridgeC",
-            sources: ["LiteRTBridge.cpp"],
+            sources: ["LiteRTBridge.cpp", "speculative_decoding.cpp"],
             publicHeadersPath: "include",
             cxxSettings: [
                 .headerSearchPath("include"),
