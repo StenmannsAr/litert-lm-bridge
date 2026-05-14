@@ -495,21 +495,6 @@ LITERT_LM_C_API_EXPORT
 LiteRtLmBenchmarkInfo* litert_lm_conversation_get_benchmark_info(
     LiteRtLmConversation* conversation);
 
-// ---------------------------------------------------------------------------
-// Bridge-Erweiterung: Speculative Decoding (MTP Drafter)
-//
-// Implementiert in speculative_decoding.cpp via Struct-Layout-Shim.
-// Muss VOR litert_lm_engine_create auf dem Settings-Handle aufgerufen werden.
-// Falls das Modell keinen kTfLiteMtpDrafter-Abschnitt enthält, fällt
-// litert_lm_engine_create transparent auf AR-Decoding zurück.
-// ---------------------------------------------------------------------------
-
-// Aktiviert Speculative Decoding (MTP Drafter) in den Engine-Settings.
-// Setzt AdvancedSettings::enable_speculative_decoding = true.
-LITERT_LM_C_API_EXPORT
-void litert_lm_engine_settings_enable_speculative_decoding(
-    LiteRtLmEngineSettings* settings);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif

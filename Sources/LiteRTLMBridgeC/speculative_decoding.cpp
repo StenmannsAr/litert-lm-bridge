@@ -17,7 +17,9 @@
 //   GetMutableMainExecutorSettings: ret
 //   → gibt 'this' zurück → main_executor_settings_ bei Offset 0 ✓
 
-#include "c/engine.h"
+// Kein #include "c/engine.h" direkt — stattdessen LiteRTBridgeExt.h, das
+// c/engine.h korrekt einschließt OHNE durch xcframework-Include-Guards blockiert zu werden.
+#include "LiteRTBridgeExt.h"
 
 #include <cstddef>
 #include <cstdint>

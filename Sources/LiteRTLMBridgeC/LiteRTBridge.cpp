@@ -5,7 +5,7 @@
 //   $(SRCROOT)/../LiteRT-LM/c/engine.h
 
 #include "LiteRTBridge.h"
-#include "c/engine.h"
+#include "LiteRTBridgeExt.h"
 
 // Erzwingt dass der Linker engine_impl.o aus LiteRTLMVendor.a einschließt.
 // engine_impl.o enthält LITERT_LM_REGISTER_ENGINE(kLiteRTCompiledModel, ...)
