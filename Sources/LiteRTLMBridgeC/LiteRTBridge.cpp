@@ -47,13 +47,26 @@ struct LiteRTEngineHandle {
 };
 
 // ---------------------------------------------------------------------------
-// Hilfsfunktion: Backend mit Fallback initialisieren
+// Hilfsfunktion: Engine mit bestem verfügbaren Backend initialisieren
 // Versucht GPU, fällt auf CPU zurück wenn GPU fehlschlägt.
 // ---------------------------------------------------------------------------
+//
+// WICHTIG (Crash-Fix): Die Engine wird hier GENAU EINMAL erzeugt.
+// Frühere Versionen legten zur Backend-Probe eine "Test-Engine" an, löschten
+// sie wieder und erzeugten danach die echte Engine ein zweites Mal aus DENSELBEN
+// Settings. Dieser Create→Delete→Create-Zyklus lud das ~2 GB-Modell doppelt und
+// verdoppelte die Crash-Exposition in litert_lm_engine_create (EngineSettings-/
+// AdvancedSettings-Copy, std::set<int>). Jetzt: ein Create, Engine wird behalten.
+//
+// Bei Erfolg wird die Engine zurückgegeben und *out_settings auf die zugehörigen
+// (am Leben gehaltenen) Settings gesetzt — der Aufrufer übernimmt beide ins Handle.
 
-static LiteRtLmEngineSettings* create_settings_with_best_backend(
-    const char* model_path, const char* cache_dir, bool enable_speculative_decoding)
+static LiteRtLmEngine* create_engine_with_best_backend(
+    const char* model_path, const char* cache_dir, bool enable_speculative_decoding,
+    LiteRtLmEngineSettings** out_settings)
 {
+    *out_settings = nullptr;
+
     // Reihenfolge: GPU (Metal) → CPU
     // GPU ist auf A-Series-Chips 3–10× schneller als CPU.
     const char* backends[] = { "gpu", "cpu" };
@@ -92,16 +105,17 @@ static LiteRtLmEngineSettings* create_settings_with_best_backend(
                 litert_lm_engine_settings_enable_speculative_decoding(settings);
             }
 
-            // Testweise Engine anlegen um Backend-Verfügbarkeit zu prüfen
-            LiteRtLmEngine* test_engine = litert_lm_engine_create(settings);
-            if (test_engine) {
+            // Engine GENAU EINMAL erzeugen. Erfolg → behalten (kein zweiter Create).
+            // Misserfolg (NULL, z.B. Backend/Drafter nicht verfügbar) → nächstes Backend.
+            LiteRtLmEngine* engine = litert_lm_engine_create(settings);
+            if (engine) {
                 fprintf(stderr, "[LiteRTBridge] Backend: %s%s ✓\n",
                         backend, use_sd ? " + MTP-Drafter" : "");
-                litert_lm_engine_delete(test_engine);
-                return settings;
+                *out_settings = settings;  // Settings am Leben halten (Handle übernimmt)
+                return engine;
             }
 
-            // Dieses Backend fehlgeschlagen → nächstes versuchen
+            // Dieses Backend fehlgeschlagen → Settings freigeben, nächstes versuchen
             fprintf(stderr, "[LiteRTBridge] Backend %s%s fehlgeschlagen, versuche nächstes …\n",
                     backend, use_sd ? " + SD" : "");
             litert_lm_engine_settings_delete(settings);
@@ -145,22 +159,15 @@ LiteRTEngineRef litert_engine_create(const char* model_path, const char* cache_d
     try {
         handle = new LiteRTEngineHandle();
 
-        // 1. Settings mit bestem verfügbaren Backend (GPU → CPU Fallback)
-        //    Bei SD-Anforderung zusätzlich Fallback ohne Drafter.
-        handle->lm_settings = create_settings_with_best_backend(
-            model_path, cache_dir, enable_speculative_decoding);
-        if (!handle->lm_settings) {
-            fprintf(stderr, "[LiteRTBridge] Alle Backends fehlgeschlagen\n");
-            delete handle;
-            return nullptr;
-        }
-
-        // 2. Engine instanziieren (blockierend — Modell wird geladen)
-        handle->lm_engine = litert_lm_engine_create(handle->lm_settings);
+        // Engine + Settings mit bestem verfügbaren Backend (GPU → CPU Fallback,
+        // bei SD-Anforderung zusätzlich Fallback ohne Drafter). Die Engine wird
+        // dabei nur EINMAL erzeugt (kein separater Test-Create mehr → Modell wird
+        // nicht doppelt geladen, halbe Crash-Exposition).
+        handle->lm_engine = create_engine_with_best_backend(
+            model_path, cache_dir, enable_speculative_decoding, &handle->lm_settings);
         if (!handle->lm_engine) {
-            fprintf(stderr, "[LiteRTBridge] litert_lm_engine_create fehlgeschlagen — %s\n",
-                    model_path);
-            litert_lm_engine_settings_delete(handle->lm_settings);
+            fprintf(stderr, "[LiteRTBridge] Alle Backends fehlgeschlagen — %s\n", model_path);
+            if (handle->lm_settings) litert_lm_engine_settings_delete(handle->lm_settings);
             delete handle;
             return nullptr;
         }
