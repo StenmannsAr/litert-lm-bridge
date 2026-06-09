@@ -16,8 +16,8 @@ let package = Package(
         // v2.1.2: LiteRTBridge.h aus XCFramework-Headers entfernt (Konflikt mit Source-Target)
         .binaryTarget(
             name: "LiteRTLMVendor",
-            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v2.1.2/LiteRTLMVendor.xcframework.zip",
-            checksum: "5eab6b1e70386ed22de4d62a534eabb8f911f68279fdfde5a1e95e0561d5146c"
+            url: "https://github.com/StenmannsAr/litert-lm-bridge/releases/download/v2.2.0/LiteRTLMVendor.xcframework.zip",
+            checksum: "5929b5a1123a52d30cb40db1e828846d3934db3a1c361085a9aeed4f579a360d"
         ),
 
         // Statische Lib (libGemmaModelConstraintProvider) — stub, kein dylib → keine ITMS-Fehler

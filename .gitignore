@@ -5,3 +5,4 @@
 *.d
 DerivedData/
 Vendor/
+LocalVendor/

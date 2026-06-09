@@ -21,6 +21,15 @@
 // c/engine.h korrekt einschließt OHNE durch xcframework-Include-Guards blockiert zu werden.
 #include "LiteRTBridgeExt.h"
 
+#include <TargetConditionals.h>
+
+#if TARGET_OS_SIMULATOR
+// Simulator-Stub (#109): keine Vendor-/Struct-Layout-Abhängigkeit. Wird im
+// Simulator nie aufgerufen (Engine läuft dort über den Swift-Mock).
+extern "C"
+void litert_lm_engine_settings_enable_speculative_decoding(LiteRtLmEngineSettings*) {}
+#else
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -148,3 +157,5 @@ void litert_lm_engine_settings_enable_speculative_decoding(
 
     fprintf(stderr, "[LiteRTBridge] Speculative Decoding (MTP Drafter) aktiviert\n");
 }
+
+#endif // TARGET_OS_SIMULATOR

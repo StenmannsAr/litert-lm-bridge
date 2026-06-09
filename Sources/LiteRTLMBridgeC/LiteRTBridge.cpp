@@ -5,6 +5,42 @@
 //   $(SRCROOT)/../LiteRT-LM/c/engine.h
 
 #include "LiteRTBridge.h"
+
+#include <TargetConditionals.h>
+
+#if TARGET_OS_SIMULATOR
+// ---------------------------------------------------------------------------
+// Simulator-Stub (#109)
+//
+// Im iOS-Simulator gibt es KEINE native LiteRT-LM-Binary (die ~185 MB Vendor-
+// Slice + Rust-Closure werden nur fürs Gerät gebaut). Der Swift-Wrapper
+// LiteRTEngine nutzt im Simulator ohnehin einen reinen Mock und ruft KEINE
+// dieser C-Funktionen auf. Damit der C-Bridge-Code für den Simulator linkt,
+// OHNE Vendor-Symbole zu referenzieren, liefern wir hier triviale Stubs.
+// → CI/Tests können die Pipeline (über den Swift-Mock) im Simulator ausführen.
+// ---------------------------------------------------------------------------
+#include <cstdlib>
+
+extern "C" {
+
+LiteRTEngineRef litert_engine_create(const char*, const char*, bool) {
+    return nullptr;  // wird im Simulator nie aufgerufen (Swift-Mock)
+}
+
+void litert_engine_destroy(LiteRTEngineRef) {}
+
+const char* litert_engine_send_message(LiteRTEngineRef, const char*) {
+    return nullptr;  // wird im Simulator nie aufgerufen (Swift-Mock)
+}
+
+void litert_free_string(const char* str) {
+    free(const_cast<char*>(str));
+}
+
+} // extern "C"
+
+#else  // !TARGET_OS_SIMULATOR — echte Geräte-Implementierung
+
 #include "LiteRTBridgeExt.h"
 
 // Erzwingt dass der Linker engine_impl.o aus LiteRTLMVendor.a einschließt.
@@ -93,9 +129,12 @@ static LiteRtLmEngine* create_engine_with_best_backend(
             );
             if (!settings) continue;
 
-            // Kontext-Fenster: System-Prompt (~500) + OCR-Text (3000) + Antwort (300)
-            // 4096 ist ausreichend und hält den KV-Cache kleiner als 8192.
-            litert_lm_engine_settings_set_max_num_tokens(settings, 4096);
+            // Kontext-Fenster (KV-Cache): System-Prompt + OCR-Text/Tag-Liste + Antwort.
+            // #136: 4096 → 8192 für lange Dokumente und große Tag-Listen.
+            // ACHTUNG: KV-Cache wächst ~linear mit diesem Wert. Peak-Memory am Gerät
+            // (6 GB RAM, ~2,5 GB Modell) verifizieren, bevor weiter erhöht wird (nicht 32K → OOM).
+            constexpr int kMaxNumTokens = 8192;
+            litert_lm_engine_settings_set_max_num_tokens(settings, kMaxNumTokens);
 
             if (cache_dir && *cache_dir != '\0') {
                 litert_lm_engine_settings_set_cache_dir(settings, cache_dir);
@@ -132,9 +171,11 @@ static LiteRtLmEngine* create_engine_with_best_backend(
 static LiteRtLmSessionConfig* create_session_config() {
     LiteRtLmSessionConfig* config = litert_lm_session_config_create();
     if (!config) return nullptr;
-    // JSON-Metadaten brauchen max. ~300 Tokens — aggressiveres Limit
-    // verhindert unnötiges Generieren und beschleunigt Early-Stopping.
-    litert_lm_session_config_set_max_output_tokens(config, 512);
+    // #136: 512 → 1024. Metadaten-JSON braucht ~300 Tokens, aber der Tag-Merge
+    // gibt JSON mit mehreren Gruppen aus, das bei 512 mitten im Objekt abschnitt
+    // (siehe #138). Early-Stopping greift weiterhin über die Stop-Tokens.
+    constexpr int kMaxOutputTokens = 1024;
+    litert_lm_session_config_set_max_output_tokens(config, kMaxOutputTokens);
     return config;
 }
 
@@ -298,3 +339,5 @@ void litert_free_string(const char* str) {
 }
 
 } // extern "C"
+
+#endif // TARGET_OS_SIMULATOR
