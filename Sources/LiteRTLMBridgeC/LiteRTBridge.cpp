@@ -130,10 +130,11 @@ static LiteRtLmEngine* create_engine_with_best_backend(
             if (!settings) continue;
 
             // Kontext-Fenster (KV-Cache): System-Prompt + OCR-Text/Tag-Liste + Antwort.
-            // #136: 4096 → 8192 für lange Dokumente und große Tag-Listen.
-            // ACHTUNG: KV-Cache wächst ~linear mit diesem Wert. Peak-Memory am Gerät
-            // (6 GB RAM, ~2,5 GB Modell) verifizieren, bevor weiter erhöht wird (nicht 32K → OOM).
-            constexpr int kMaxNumTokens = 8192;
+            // MUSS der kompilierten Kontextlänge des Modells entsprechen: gemma-4-E2B ist
+            // auf 4096 kompiliert (magic_number target_number=4096, Signaturen prefill_128/1024).
+            // Ein höherer Wert (8192, #136) ließ generate_content über die KV-Cache-Buffer
+            // hinaus indexieren → EXC_BAD_ACCESS am Gerät. Daher fest auf 4096.
+            constexpr int kMaxNumTokens = 4096;
             litert_lm_engine_settings_set_max_num_tokens(settings, kMaxNumTokens);
 
             if (cache_dir && *cache_dir != '\0') {
