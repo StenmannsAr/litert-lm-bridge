@@ -58,6 +58,11 @@ public final class LiteRTEngine: @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // LM Studio kann Authentifizierung verlangen ("Require API token") —
+        // Token optional via Env mitgeben, sonst lehnt der Server mit invalid_api_key ab.
+        if let token = env["LITERT_SIM_LLM_TOKEN"], !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.timeoutInterval = 120
         // Sampler-Parameter analog zur On-Device-Engine (TOP_P 0.95, temperature 1.0)
         let body: [String: Any] = [
