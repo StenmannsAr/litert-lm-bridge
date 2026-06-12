@@ -26,6 +26,30 @@ public enum LiteRTError: Error, LocalizedError {
 /// Führt Inferenz auf einem dedizierten Hintergrund-Thread durch.
 public final class LiteRTEngine: @unchecked Sendable {
 
+    // MARK: In-Flight-Tracking (#150)
+    //
+    // Atomarer Zähler laufender Inferenzen. EngineManager nutzt `isBusy`, um die
+    // Engine NIEMALS während eines laufenden Laufs zu entladen — der 300-s-Unload-
+    // Timer konnte sonst mitten in Bulk-Läufe feuern (Doppel-Residenz 2×2,5 GB,
+    // destroy/create-Races in C++-Globals → Feldcrashes in Prefill auf 1.4.1).
+
+    private let busyLock = NSLock()
+    private var inFlight = 0
+
+    /// True, solange mindestens eine Inferenz läuft.
+    public var isBusy: Bool {
+        busyLock.lock(); defer { busyLock.unlock() }
+        return inFlight > 0
+    }
+
+    private func beginWork() {
+        busyLock.lock(); inFlight += 1; busyLock.unlock()
+    }
+
+    private func endWork() {
+        busyLock.lock(); inFlight -= 1; busyLock.unlock()
+    }
+
     // MARK: Simulator: LM Studio (localhost) mit Canned-Fallback (#140)
     //
     // Im Simulator gibt es keine native LiteRT-Runtime. Statt nur hardcodiertem JSON
@@ -50,6 +74,8 @@ public final class LiteRTEngine: @unchecked Sendable {
     """
 
     public func sendMessage(_ message: String) async throws -> String {
+        beginWork()
+        defer { endWork() }
         let env = ProcessInfo.processInfo.environment
         let urlString = env["LITERT_SIM_LLM_URL"] ?? "http://127.0.0.1:1234/v1/chat/completions"
         let model = env["LITERT_SIM_LLM_MODEL"] ?? "google/gemma-4-e2b"
@@ -119,6 +145,8 @@ public final class LiteRTEngine: @unchecked Sendable {
     public func sendMessage(_ message: String) async throws -> String {
         struct Ref: @unchecked Sendable { let r: LiteRTEngineRef }
         let ref = Ref(r: engineRef)
+        beginWork()
+        defer { endWork() }
         return try await withCheckedThrowingContinuation { continuation in
             inferenceQueue.async {
                 guard let cResponse = litert_engine_send_message(ref.r, message) else {
